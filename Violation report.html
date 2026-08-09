@@ -1,0 +1,1049 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1F3864">
+<title>Near miss / Violation report — Energya</title>
+<style>
+/* =====================================================================
+   Energya HSE — Near Miss / Violation report
+   The form ON SCREEN and the sheet ON PAPER are the SAME DOM, so what the
+   officer fills in is literally what prints. @media print only strips the
+   chrome and restores the exact Excel grid.
+   ===================================================================== */
+:root{
+  --ink:#000; --line:#000; --hdr:#D9D9D9;      /* Excel theme0 tint -0.15 */
+  --brand:#1F3864; --accent:#C00000;
+  --ok:#1E7A33; --warn:#B36B00; --paper:#fff; --bg:#eceff3;
+  /* Cambria for the Latin text (the house font of the printed forms); the
+     Arabic falls through to a matching serif because Cambria carries no
+     Arabic glyphs. */
+  --f: Cambria, "Sakkal Majalla", "Traditional Arabic", "Times New Roman",
+       "Segoe UI", Tahoma, serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--bg);font-family:var(--f);color:var(--ink);-webkit-text-size-adjust:100%}
+
+/* ------------------------------------------------------------ toolbar */
+.bar{position:sticky;top:0;z-index:50;background:var(--brand);color:#fff;
+     display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:9px 14px;
+     box-shadow:0 2px 8px rgba(0,0,0,.25)}
+.bar h1{font-size:15px;margin:0;font-weight:700;flex:1;min-width:150px;line-height:1.3}
+.bar .rn{font:700 13px/1 monospace;background:rgba(255,255,255,.16);
+         padding:6px 10px;border-radius:6px;letter-spacing:.5px}
+.btn{border:0;border-radius:7px;padding:9px 15px;font:600 13px var(--f);
+     cursor:pointer;background:#fff;color:var(--brand);white-space:nowrap}
+.btn:hover{opacity:.88}
+.btn.pri{background:#22c55e;color:#06340f}
+.btn.gh{background:rgba(255,255,255,.15);color:#fff}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+
+/* ------------------------------------------------------------- paper */
+.wrap{padding:16px 10px 60px}
+.paper{width:210mm;max-width:100%;margin:0 auto;background:var(--paper);
+       border:1px solid #000;padding:0;box-shadow:0 4px 22px rgba(0,0,0,.18)}
+
+/* the 9 Excel columns A..I (RTL: A is on the right) */
+.g{display:grid;
+   grid-template-columns:17.1fr 11.8fr 12.4fr 8.4fr 17.5fr 14.5fr 13.9fr 12.3fr 24.1fr;}
+
+.cell{padding:2px 5px;font-size:10.5px;line-height:1.3;display:flex;
+      align-items:center;gap:6px;min-height:19px}
+.cell.ctr{justify-content:center;text-align:center}
+.cell.hdr{background:var(--hdr);font-weight:700;font-size:11.5px;
+          justify-content:center;text-align:center;border:1px solid var(--line);
+          padding:3px;white-space:pre-line}
+.cell.lbl{font-weight:700;white-space:pre-line}
+.cell.note{font-size:10px;font-style:italic;justify-content:center;text-align:center}
+.cell.en{font-size:10.5px;font-weight:700;justify-content:center;direction:ltr}
+
+/* header row */
+.head{display:grid;grid-template-columns:41.3fr 40.4fr 50.3fr;
+      border-bottom:1px solid var(--line);align-items:center}
+.head .logo{padding:3px 8px}
+.head .logo img{height:38px;width:auto;display:block}
+.head .logo.l{display:flex;justify-content:flex-end}
+.head .logo.l img{height:28px;opacity:.85}
+.head .ttl{text-align:center;font-weight:700;font-size:14px;color:var(--brand);
+           padding:4px;direction:ltr;line-height:1.2}
+.head .ttl small{display:block;font-size:9.5px;color:#444;font-weight:600;
+                 letter-spacing:.4px;margin-top:1px}
+
+.sect{border-top:1px solid var(--line)}
+.pad{padding:4px 8px}
+
+/* --------------------------------------------------------- form bits */
+input[type=text],input[type=date],input[type=time],textarea,select{
+  font-family:var(--f);font-size:11.5px;color:var(--ink);background:#fff;
+  border:1px solid #9aa3af;border-radius:4px;padding:3px 6px;width:100%;
+  outline:none}
+input:focus,textarea:focus,select:focus{border-color:var(--brand);
+  box-shadow:0 0 0 2px rgba(31,56,100,.18)}
+textarea{resize:vertical;line-height:1.45;min-height:44px}
+.inline{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
+.dbox{max-width:150px}
+
+/* check + radio drawn as the rounded rectangles used in the Excel form */
+.ck{display:inline-flex;align-items:center;gap:7px;cursor:pointer;
+    font-size:11px;font-weight:700;line-height:1.3}
+.ck input{appearance:none;-webkit-appearance:none;margin:0;flex:none;
+          width:18px;height:18px;border:1.5px solid var(--line);border-radius:5px;
+          background:#fff;cursor:pointer;position:relative}
+.ck input:checked{background:var(--brand);border-color:var(--brand)}
+.ck input:checked::after{content:"";position:absolute;inset:0;
+  background:no-repeat center/70% url("data:image/svg+xml;charset=utf-8,\
+%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' \
+stroke='white' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'\
+%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E")}
+.ck input:focus-visible{box-shadow:0 0 0 2px rgba(31,56,100,.35)}
+
+/* risk cards */
+.risk{display:grid;grid-template-columns:1fr 1fr;gap:0}
+.rk{border:1px solid var(--line);padding:4px 8px;display:flex;flex-direction:column;
+    gap:1px;align-items:center;text-align:center;cursor:pointer;background:#fff}
+.rk:hover{background:#f6f8fb}
+.rk .t{font-weight:700;font-size:10.5px;white-space:pre-line}
+.rk .d{font-size:9px;font-style:italic;color:#333}
+.rk .e{font-size:9px;font-weight:700;direction:ltr;color:#333}
+.rk.on{background:#eef4ff}
+.rk.on.vh{background:#ffe9e9}
+
+/* corrective actions */
+.acts{border:1px solid var(--line);border-top:0}
+.act{display:grid;grid-template-columns:22px 1fr 118px 108px 78px 26px;
+     gap:5px;align-items:start;padding:3px 7px;border-bottom:1px solid #cbd2da}
+.act:last-child{border-bottom:0}
+.act .n{font-weight:700;font-size:11px;padding-top:5px;text-align:center}
+.act textarea{min-height:26px}
+.act .x{border:0;background:#fff0f0;color:var(--accent);border-radius:5px;
+        cursor:pointer;font-size:14px;font-weight:700;height:26px;margin-top:2px}
+.actbar{padding:5px 9px;display:flex;gap:9px;align-items:center;flex-wrap:wrap;
+        border:1px solid var(--line);border-top:0;background:#fafbfc}
+.mini{font-size:11px;color:#5a6472}
+
+/* signatures */
+.sign{display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid var(--line)}
+.sg{border:1px solid var(--line);padding:4px 9px}
+.sg .k{font-weight:700;font-size:10.5px;margin-bottom:3px;white-space:pre-line}
+/* the HSE manager's name is filled in for him, so it sits centred in the box
+   like a signature rather than left-aligned like a field waiting to be typed */
+.sg.mgr{display:flex;flex-direction:column;justify-content:center;align-items:center}
+.sg.mgr .k{text-align:center}
+.sg.mgr input{text-align:center}
+
+/* helpers, alerts */
+.hint{font-size:10.5px;color:#5a6472;font-weight:400}
+.req::after{content:" *";color:var(--accent);font-weight:700}
+.alert{margin:10px 0 0;padding:10px 12px;border-radius:7px;font-size:12px;
+       font-weight:600;line-height:1.5;border:1px solid}
+.alert.err{background:#fff1f1;border-color:#f3b6b6;color:#8a1010}
+.alert.warn{background:#fff8e8;border-color:#ecd08a;color:#6b4b00}
+.alert.ok{background:#eefaf0;border-color:#a9dfb6;color:#155724}
+.bad{border-color:var(--accent)!important;background:#fff7f7!important}
+.status{position:fixed;inset:auto 0 0 0;background:#111;color:#fff;padding:11px 16px;
+        font-size:13px;text-align:center;z-index:60;transform:translateY(110%);
+        transition:transform .22s}
+.status.on{transform:none}
+.locked input,.locked textarea,.locked select{background:#f4f5f7;color:#333}
+.locked .ck input{pointer-events:none}
+.locked .act .x,.locked .actbar{display:none}
+
+/* ------------------------------------------------- saved-reports drawer */
+.mask{position:fixed;inset:0;background:rgba(15,20,30,.55);z-index:70;display:none}
+.mask.on{display:block}
+.win{position:fixed;inset:4% 50% auto auto;transform:translateX(50%);width:min(860px,94vw);
+     max-height:88vh;background:#fff;border-radius:12px;z-index:71;display:none;
+     flex-direction:column;box-shadow:0 18px 50px rgba(0,0,0,.35);overflow:hidden}
+.win.on{display:flex}
+.win h3{margin:0;padding:12px 16px;background:var(--brand);color:#fff;font-size:15px;
+        display:flex;align-items:center;gap:10px}
+.win h3 .sp{flex:1}
+.win h3 button{border:0;background:rgba(255,255,255,.18);color:#fff;border-radius:7px;
+        padding:6px 11px;cursor:pointer;font:600 13px var(--f)}
+.win .body{overflow:auto;padding:10px 14px 16px}
+.rt{width:100%;border-collapse:collapse;font-size:12px}
+.rt th{background:#eef2f8;text-align:right;padding:7px 8px;border-bottom:1px solid #cfd6e0;
+       font-weight:700;position:sticky;top:0}
+.rt td{padding:7px 8px;border-bottom:1px solid #eceff3;vertical-align:top}
+.rt tr:hover td{background:#f7f9fc}
+.rt .num{font:700 11.5px monospace;white-space:nowrap}
+.rt .ops{white-space:nowrap;display:flex;gap:6px}
+.rt .ops button{border:0;border-radius:6px;padding:5px 10px;cursor:pointer;
+       font:600 11.5px var(--f);background:#eef2f8;color:var(--brand)}
+.rt .ops .del{background:#fff0f0;color:var(--accent)}
+.pill{display:inline-block;padding:1px 7px;border-radius:99px;font-size:10.5px;font-weight:700}
+.pill.done{background:#e6f6ea;color:#15803d}
+.pill.not{background:#fff4e5;color:#a35a00}
+.pill.sync{background:#eef2ff;color:#3730a3}
+.pill.loc{background:#f3f4f6;color:#4b5563}
+.empty{padding:26px;text-align:center;color:#6b7280;font-size:13px}
+.editnote{background:#fff8e8;border:1px solid #ecd08a;color:#6b4b00;
+          padding:8px 12px;font-size:12px;font-weight:600;text-align:center}
+
+/* ------------------------------------------------------ small screens */
+/* NOTE the `screen` keyword — it is not decoration. An A4 page is 794 CSS px
+   wide at 96dpi, so a bare `(max-width:820px)` query MATCHES WHILE PRINTING and
+   would quietly apply the phone layout to the paper: every corrective action
+   stacked into one column and the form ran to three pages. */
+@media screen and (max-width:820px){
+  .wrap{padding:10px 6px 70px}
+  .paper{border:0;box-shadow:none}
+  .g{grid-template-columns:1fr}
+  .cell{min-height:0}
+  .risk{grid-template-columns:1fr}
+  .act{grid-template-columns:22px 1fr;gap:5px}
+  .act .rsp,.act .due,.act .st{grid-column:2}
+  .act .x{grid-column:2;justify-self:start;width:60px}
+  .head{grid-template-columns:1fr;text-align:center}
+  .head .logo,.head .logo.l{justify-content:center;display:flex}
+  .sign{grid-template-columns:1fr}
+}
+
+/* ---------------------------------------------------------------------
+   PAPER SIZE — deliberately NOT pinned to A4.
+   Asking for `size:A4` on a printer loaded with Letter makes the browser
+   shrink the whole sheet to fit, and the scale then changes from one machine
+   to the next. Instead the paper is left to the printer and the sheet is
+   locked to 186 x 262 mm — a size that fits inside BOTH A4 (210x297) and
+   Letter (216x279) with room to spare, so it prints at 100% either way and
+   always comes out identical.
+   --------------------------------------------------------------------- */
+@page{size:portrait;margin:6mm}
+</style>
+
+<!-- =====================================================================
+     PRINT STYLESHEET — deliberately a separate sheet with media="print".
+     Before printing, the script flips this sheet to media="all" for a few
+     milliseconds. The page on screen then IS the printed page, so the
+     height that gets measured is the real one instead of an estimate made
+     from the screen layout. That measurement is what decides the scale, and
+     it is why the sheet can be guaranteed to land on one page.
+     ===================================================================== -->
+<style id="printCSS" media="print">
+  body{background:#fff}
+  .bar,.status,.actbar,.hint,.noprint,.act .x{display:none!important}
+  .wrap{padding:0;margin:0}
+  /* The locked sheet: 186 x 262 mm, centred, so the white band is identical on
+     the left and on the right whatever paper is loaded. It is a full-height
+     column, so it always reaches the bottom of the sheet instead of stopping
+     halfway — the Summary block below is the one that stretches. */
+  .paper{width:186mm!important;max-width:none!important;border:1px solid #000;
+         box-shadow:none;margin:0 auto!important;
+         display:flex;flex-direction:column;min-height:262mm}
+  .fillpad{flex:1;display:flex;flex-direction:column;min-height:0}
+  .fillpad textarea{flex:1}
+  /* the whole sheet is ONE A4 page — never let anything split it */
+  .paper,.sect,.risk,.acts,.sign,.g,.head,.act{
+    break-inside:avoid;page-break-inside:avoid}
+  .g{grid-template-columns:17.1fr 11.8fr 12.4fr 8.4fr 17.5fr 14.5fr 13.9fr 12.3fr 24.1fr!important}
+  .risk{grid-template-columns:1fr 1fr!important}
+  .act{grid-template-columns:22px 1fr 118px 108px 78px!important}
+  /* the phone layout drops these into a single column — undo that here too,
+     because the measuring pass runs while the window may still be narrow */
+  .act .rsp,.act .due,.act .st{grid-column:auto!important}
+  /* empty corrective-action lines still print as ruled blanks, exactly like
+     the paper form, but they must not eat vertical space */
+  .act textarea{min-height:22px}
+  .cell{min-height:19px!important}
+  .head{grid-template-columns:41.3fr 40.4fr 50.3fr!important;text-align:initial!important}
+  .head .logo{display:block!important}
+  .head .logo.l{display:flex!important;justify-content:flex-end!important}
+  .sign{grid-template-columns:1fr 1fr 1fr!important}
+  /* inputs print as plain text on ruled lines, never as widgets */
+  input[type=text],input[type=date],input[type=time],textarea,select{
+    border:0;border-bottom:1px solid #666;border-radius:0;padding:1px 2px;
+    background:#fff!important;color:#000!important;font-size:11px;
+    box-shadow:none;-webkit-appearance:none;appearance:none}
+  /* a blank writing area reads as a hole in the page; the Excel form ruled it,
+     so the textareas are ruled the same way */
+  textarea{border:0;overflow:hidden!important;resize:none;line-height:18px;
+    background:repeating-linear-gradient(#fff,#fff 17px,#c8ccd2 17px,#c8ccd2 18px)!important}
+  /* Chrome prints "dd/mm/yyyy" and "--:-- --" inside empty date/time boxes —
+     on paper that is noise, so empty ones are blanked out */
+  .blank::-webkit-datetime-edit{opacity:0}
+  .ck input{width:14px;height:14px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .cell.hdr,.rk.on,.ck input:checked{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+</style>
+</head>
+<body>
+
+<!-- ===================== toolbar (screen only) ===================== -->
+<div class="bar noprint">
+  <h1 id="barTitle">تقرير حادث وشيك / مخالفة</h1>
+  <span class="rn" id="barNo">— لم يُرسل بعد —</span>
+  <button class="btn pri" id="btnSend" onclick="submitReport()">إرسال التقرير</button>
+  <button class="btn" onclick="window.print()">طباعة / PDF</button>
+  <button class="btn gh" onclick="openList()">📁 التقارير السابقة</button>
+  <button class="btn gh" onclick="newReport()">تقرير جديد</button>
+  <button class="btn gh" onclick="openSettings()" title="إعداد الاتصال بقاعدة البيانات">⚙</button>
+</div>
+
+<div class="editnote noprint" id="editNote" style="display:none"></div>
+
+<!-- ================= saved reports: open / edit / delete ================= -->
+<div class="mask noprint" id="listMask" onclick="closeList()"></div>
+<div class="win noprint" id="listWin" role="dialog" aria-label="التقارير السابقة">
+  <h3>📁 التقارير السابقة
+    <span class="sp"></span>
+    <button onclick="closeList()">✕ إغلاق</button>
+  </h3>
+  <div class="body" id="listBody"></div>
+</div>
+
+<div class="wrap">
+<div class="paper" id="paper">
+
+  <!-- ---------------------------------------------------- header row -->
+  <div class="head">
+    <div class="logo"><img src="data:image/jpeg;base64,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" alt="Energya Steel Solutions"></div>
+    <div class="ttl">Near miss / Violation report<small>تقرير حادث وشيك / مخالفة</small></div>
+    <div class="logo l"><img src="data:image/png;base64,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" alt="HSE"></div>
+  </div>
+
+  <!-- ------------------------------------------- date + report type -->
+  <div class="sect g" style="align-items:center">
+    <div class="cell lbl" style="grid-column:1">التاريخ :</div>
+    <div class="cell" style="grid-column:2 / 5">
+      <input type="date" id="reportDate" class="dbox" onchange="onDateChange()">
+      <input type="time" id="reportTime" class="dbox" style="max-width:105px" title="الوقت (اختياري)">
+    </div>
+    <div class="cell ctr" style="grid-column:5 / 8">
+      <label class="ck"><input type="radio" name="rtype" value="Violation" onchange="onTypeChange()">
+        <span>مخالفة<br>Violation</span></label>
+    </div>
+    <div class="cell ctr" style="grid-column:8 / 10">
+      <label class="ck"><input type="radio" name="rtype" value="Near Miss" onchange="onTypeChange()">
+        <span>حادث وشيك<br>Near miss</span></label>
+    </div>
+  </div>
+
+  <!-- ---------------------------------- type of violation / nearmiss -->
+  <div class="sect g">
+    <div class="cell hdr" style="grid-column:1 / 7">نوع المخالفة او الحادث الوشيك
+Type of violation or nearmiss</div>
+    <div class="cell hdr" style="grid-column:7 / 10">التكرار
+Frequency</div>
+  </div>
+  <div class="sect g" style="border-top:0">
+    <div class="cell" style="grid-column:1 / 7;flex-direction:column;align-items:flex-start;gap:7px;padding:8px">
+      <label class="ck"><input type="radio" name="cause" value="Un safe condition" onchange="clearBad(this)">
+        <span>وضع غير آمن &nbsp;(Unsafe condition)</span></label>
+      <label class="ck"><input type="radio" name="cause" value="Un safe action" onchange="clearBad(this)">
+        <span>تصرف غير آمن &nbsp;(Unsafe act)</span></label>
+    </div>
+    <div class="cell" style="grid-column:7 / 10;padding:8px">
+      <input type="text" id="frequency" placeholder="مثال: أول مرة / متكرر / 3 مرات">
+    </div>
+  </div>
+
+  <!-- -------------------------------------------- violation impact -->
+  <div class="sect g">
+    <div class="cell hdr" style="grid-column:1 / 10">تأثير المخالفة
+Violation impact</div>
+  </div>
+  <div class="sect g" style="border-top:0">
+    <div class="cell ctr" style="grid-column:1 / 3;padding:9px 4px">
+      <label class="ck"><input type="checkbox" id="impEnv"><span>البيئة<br>Environment</span></label></div>
+    <div class="cell ctr" style="grid-column:3 / 5;padding:9px 4px">
+      <label class="ck"><input type="checkbox" id="impHealth"><span>صحة<br>Health</span></label></div>
+    <div class="cell ctr" style="grid-column:5 / 7;padding:9px 4px">
+      <label class="ck"><input type="checkbox" id="impPers"><span>سلامة افراد<br>Personnel Safety</span></label></div>
+    <div class="cell ctr" style="grid-column:7 / 10;padding:9px 4px">
+      <label class="ck"><input type="checkbox" id="impEquip"><span>سلامة معدات او منشأه<br>Equipment or Facility Safety</span></label></div>
+  </div>
+
+  <!-- ------------------------------------ violation classification -->
+  <div class="sect g">
+    <div class="cell hdr" style="grid-column:1 / 10">تصنيف المخالفة
+Violation Classification</div>
+  </div>
+  <div class="risk" id="riskBox">
+    <label class="rk vh" data-risk="Very High Risk">
+      <span class="ck"><input type="radio" name="risk" value="Very High Risk" onchange="onRisk()">
+        <b class="t">خطيرة جداً
+Very High Risk</b></span>
+      <span class="d">"تستوجب ايقاف النشاط فوراً وتصحيح الوضع"</span>
+      <span class="e">Shutdown &amp; Correct</span></label>
+    <label class="rk" data-risk="High Risk">
+      <span class="ck"><input type="radio" name="risk" value="High Risk" onchange="onRisk()">
+        <b class="t">خطيرة
+High Risk</b></span>
+      <span class="d">"تستوجب تصحيح الوضع فى خلال 24 ساعة"</span>
+      <span class="e">Action Within 24H</span></label>
+    <label class="rk" data-risk="Moderate Risk">
+      <span class="ck"><input type="radio" name="risk" value="Moderate Risk" onchange="onRisk()">
+        <b class="t">متوسط الخطورة
+Moderate Risk</b></span>
+      <span class="d">"تنفيذ الاجراء التصحيحى فى خلال 7 ايام"</span>
+      <span class="e">Correct within 7 days</span></label>
+    <label class="rk" data-risk="Low Risk">
+      <span class="ck"><input type="radio" name="risk" value="Low Risk" onchange="onRisk()">
+        <b class="t">ضعيف الخطورة
+Low Risk</b></span>
+      <span class="d">"يمكن تنفيذ الخطة التصحيحية على مدى بعيد"</span>
+      <span class="e">Long-term correction</span></label>
+  </div>
+
+  <!-- immediate action — only for Very High Risk -->
+  <div class="sect pad" id="immBox" style="display:none;background:#fff4f4">
+    <div class="cell lbl req" style="padding:0 0 5px;color:#8a1010">
+      الإجراء الفورى المتخذ لإيقاف النشاط
+      <span class="hint noprint">— إلزامي مع التصنيف "خطيرة جداً"، لا يمكن إرسال التقرير بدونه</span>
+    </div>
+    <textarea id="immediateAction" rows="2" placeholder="ما الذي تم فوراً لإيقاف الخطر؟"></textarea>
+  </div>
+
+  <!-- --------------------------------------- responsible department -->
+  <div class="sect g" style="align-items:center">
+    <div class="cell lbl req" style="grid-column:1 / 4">الادارة المختصة بموضوع المخالفة
+Responsible Department</div>
+    <div class="cell" style="grid-column:4 / 7;padding:7px">
+      <select id="department" onchange="clearBad(this)"><option value="">— اختر الإدارة —</option></select>
+    </div>
+    <div class="cell lbl" style="grid-column:7 / 8">جهة الإبلاغ</div>
+    <div class="cell" style="grid-column:8 / 10;padding:7px">
+      <select id="reportedBy" onchange="clearBad(this)"><option value="">— اسم مسئول السلامة —</option></select>
+    </div>
+  </div>
+
+  <!-- ------------------------------------------------------ summary -->
+  <div class="sect g">
+    <div class="cell hdr" style="grid-column:1 / 10">ملخص المخالفة
+Summary</div>
+  </div>
+  <div class="sect pad fillpad" style="border-top:0">
+    <textarea id="summary" rows="4" oninput="clearBad(this);grow(this)"
+      placeholder="اكتب وصفاً واضحاً: ماذا لوحظ؟ أين؟ متى؟ ما الخطر المحتمل؟"></textarea>
+    <div class="hint noprint">هذا النص هو الذي يظهر في عمود «وصـف الحـدث» بالداشبورد.</div>
+  </div>
+
+  <!-- ------------------------------------------ corrective actions -->
+  <div class="sect g">
+    <div class="cell hdr" style="grid-column:1 / 10">الإجراءات التصحيحية
+Corrective actions</div>
+  </div>
+  <div class="acts" id="actList"></div>
+  <div class="actbar noprint">
+    <button type="button" class="btn" style="background:#eef2f8" onclick="addAction()">+ إضافة إجراء</button>
+    <span class="mini">النموذج الورقي به 4 أسطر — أي إجراءات إضافية تُطبع في صفحة ملحقة.</span>
+  </div>
+
+  <!-- --------------------------------------- due date + resp person -->
+  <div class="sect g" style="align-items:center">
+    <div class="cell lbl req" style="grid-column:1 / 3">ميعاد أنتهاء التنفيذ
+Due Date</div>
+    <div class="cell" style="grid-column:3 / 5;padding:7px">
+      <input type="date" id="dueDate" onchange="clearBad(this);markDueManual()">
+    </div>
+    <div class="cell lbl" style="grid-column:5 / 7">المسئول عن التنفيذ
+Responsible</div>
+    <div class="cell" style="grid-column:7 / 10;padding:7px">
+      <input type="text" id="responsible" list="respList" placeholder="اسم المسئول">
+      <datalist id="respList"></datalist>
+    </div>
+  </div>
+  <div class="pad hint noprint" id="dueHint" style="padding-top:0"></div>
+
+  <!-- --------------------------------------------------- signatures -->
+  <div class="sign">
+    <div class="sg"><div class="k">توقيع مسئول السلامة
+HSE Officer signature</div>
+      <select id="sigHse"><option value="">— اختر الاسم —</option></select></div>
+    <div class="sg"><div class="k">مشرف القسم
+Dept. Supervisor</div>
+      <input type="text" id="sigSup" placeholder="الاسم"></div>
+    <div class="sg mgr"><div class="k">مدير إدارة السلامة
+HSE Manager</div>
+      <input type="text" id="sigMgr"></div>
+  </div>
+
+  <!-- ------------------------------------------------ action status -->
+  <div class="sect g" style="align-items:center">
+    <div class="cell hdr" style="grid-column:1 / 4">حالة الاجراء
+Action status</div>
+    <div class="cell ctr" style="grid-column:4 / 7;padding:9px">
+      <label class="ck"><input type="radio" name="status" value="Not Done" checked>
+        <span>Not done<br>لم يتم</span></label></div>
+    <div class="cell ctr" style="grid-column:7 / 10;padding:9px">
+      <label class="ck"><input type="radio" name="status" value="Done">
+        <span>DONE<br>تم</span></label></div>
+  </div>
+
+  <div class="pad noprint" id="msgBox"></div>
+</div><!-- /paper -->
+</div><!-- /wrap -->
+
+<div class="status" id="toast"></div>
+
+<script>
+/* =====================================================================
+   1)  CONFIGURATION  —  paste the two values from
+       Supabase -> Project Settings -> API
+       The anon key is safe to publish: every table has RLS enabled and
+       writing is only possible through the submit_hse_report() function.
+   ===================================================================== */
+const SUPABASE_URL      = "__SUPABASE_URL__";
+const SUPABASE_ANON_KEY = "__SUPABASE_ANON_KEY__";
+
+/* The two values above can also be entered once from the ⚙ button in the
+   toolbar — they are then kept in this browser, so the same HTML file works
+   on every machine without being re-edited. Reports are ALWAYS written to the
+   local bridge as well, which is what the dashboard reads, so nothing is ever
+   lost while the database is being set up. */
+const CONN_KEY  = 'energya_hse_conn_v1';    // where URL + anon key live
+const INBOX_KEY = 'energya_hse_inbox_v1';   // bridge -> dashboard Action_plan
+const DOCS_KEY  = 'energya_hse_docs_v1';    // full report bodies, so one can be reopened
+const DEL_KEY   = 'energya_hse_deleted_v1'; // tombstones, so a deletion sticks
+
+function connGet(){
+  try{ return JSON.parse(localStorage.getItem(CONN_KEY)) || {}; }catch(e){ return {}; }
+}
+function dbUrl(){ const c = connGet().url || SUPABASE_URL; return /^https?:/.test(c) ? c.replace(/\/+$/,'') : ''; }
+function dbKey(){ return connGet().key || SUPABASE_ANON_KEY; }
+
+function openSettings(){
+  const c = connGet();
+  const u = prompt('رابط مشروع Supabase (Project URL)\nمثال: https://xxxxx.supabase.co\n\nاتركه فارغاً للعمل بدون قاعدة بيانات (وضع الجسر المحلي).',
+                   c.url || '');
+  if(u===null) return;
+  const k = u.trim() ? prompt('مفتاح anon public key', c.key || '') : '';
+  if(u.trim() && k===null) return;
+  localStorage.setItem(CONN_KEY, JSON.stringify({url:(u||'').trim(), key:(k||'').trim()}));
+  toast(u.trim() ? 'تم حفظ بيانات الاتصال ✔' : 'تم التحويل إلى الوضع المحلي');
+  setTimeout(()=>location.reload(), 900);
+}
+
+/* the HSE team — used for the officer signature and for «جهة الإبلاغ» */
+const HSE_TEAM = ['Youssef Mobark','Haider Karam','Shahid Ali','Mohamed Yousry',
+                  'Ahmed Salah','Amjed Ali','Ahmed Nasheat','Mahmoud Saad',
+                  'Sujjad Hedaya'];
+/* the HSE department manager signs every report — filled in automatically */
+const HSE_MANAGER = 'Abdelfattah Mohamed';
+
+/* fallback master lists — used when offline or before the DB is wired.
+   These strings must stay byte-identical to the Excel Action_plan values. */
+const FALLBACK = {
+  department : ['Tower','Steel','Plate','Poles','Galvanizing','Painting',
+                'WH','Dispatch','Maintinance','Plastring'],
+  reported_by: ['Mohamed Yousry','Ahmed Salah','Kamal Esawy','Mahmoud Ramadan',
+                'Turki Elaslany','Mahmoud Saeid','Magdi Abdelghany','Ahmed Nasheat',
+                'Mohamed Elharby','Osman Elsayed','Abdullah Elblady','Haider Karam',
+                'Amjed Ali','Ahmed Haider','Ayed ElRayqy','Omar ElQraqry',
+                'Sujjad Hedaya','Fayez Elbeshry','Mahmoud Saed']
+};
+const RESP_SUGGEST = ['مبروك','رضا','عامر','فاروق','داود','عصام','سعد','حازم',
+  'أيمن','أحمد عبد الله','محمد فاروق','صبري','الخواص','عبد العزيز','ياسر','رياض'];
+
+/* due-date rule straight from the paper form */
+const DUE_DAYS = {'Very High Risk':0,'High Risk':1,'Moderate Risk':7,'Low Risk':null};
+
+const QUEUE_KEY = 'energya_hse_queue_v1';
+let LOCKED = false, dueManual = false, submitted = null;
+/* set when an existing report was reopened — saving then replaces it */
+let EDIT_UID = null;
+
+/* ------------------------------------------------------------- utils */
+const $  = id => document.getElementById(id);
+const qs = s  => document.querySelector(s);
+const val= id => ($(id) ? $(id).value.trim() : '');
+const radio = n => { const e = document.querySelector(`input[name="${n}"]:checked`);
+                     return e ? e.value : ''; };
+const iso = d => d.toISOString().slice(0,10);
+function toast(t, ms){ const b=$('toast'); b.textContent=t; b.classList.add('on');
+  clearTimeout(toast._t); toast._t=setTimeout(()=>b.classList.remove('on'), ms||3200); }
+function grow(t){ t.style.height='auto'; t.style.height=(t.scrollHeight+2)+'px'; }
+function clearBad(el){ (el.closest ? el.closest('.cell,.pad,.sect') : null); el.classList.remove('bad'); }
+function msg(kind, html){ $('msgBox').innerHTML = html ? `<div class="alert ${kind}">${html}</div>` : ''; }
+
+/* ---------------------------------------------------- report type UI */
+function onTypeChange(){
+  const t = radio('rtype');
+  $('barTitle').textContent = t==='Violation' ? 'تقرير مخالفة — Violation report'
+                            : t==='Near Miss' ? 'تقرير حادث وشيك — Near miss report'
+                            : 'تقرير حادث وشيك / مخالفة';
+  document.querySelectorAll('input[name=rtype]').forEach(r=>r.classList.remove('bad'));
+}
+
+/* ------------------------------------------------- risk -> due date */
+function onRisk(){
+  const r = radio('risk');
+  document.querySelectorAll('.rk').forEach(e=>e.classList.toggle('on', e.dataset.risk===r));
+  $('immBox').style.display = (r==='Very High Risk') ? '' : 'none';
+
+  const days = DUE_DAYS[r];
+  if(days===null || days===undefined){
+    $('dueHint').textContent = r ? 'خطورة ضعيفة — حدّد تاريخ التنفيذ حسب خطة العمل.' : '';
+  }else if(!dueManual){
+    const d = new Date(); d.setHours(12,0,0,0); d.setDate(d.getDate()+days);
+    $('dueDate').value = iso(d);
+    $('dueHint').textContent = days===0
+      ? 'إيقاف فورى — تاريخ التنفيذ = اليوم، ولا يمكن الإرسال بدون تسجيل الإجراء الفورى.'
+      : `تم اقتراح تاريخ التنفيذ تلقائياً (${days===1?'خلال 24 ساعة':'خلال 7 أيام'}). يمكنك تعديله.`;
+  }
+  document.querySelectorAll('input[name=risk]').forEach(e=>e.classList.remove('bad'));
+}
+function markDueManual(){ dueManual = true; }
+function onDateChange(){ clearBad($('reportDate')); }
+
+/* ------------------------------------------------ corrective actions */
+function addAction(desc){
+  const list = $('actList'), n = list.children.length + 1;
+  const row = document.createElement('div');
+  row.className = 'act';
+  row.innerHTML = `
+    <div class="n">${n}-</div>
+    <textarea rows="1" class="ad" oninput="grow(this)" placeholder="الإجراء التصحيحى">${desc||''}</textarea>
+    <input type="text"  class="rsp" placeholder="المسئول">
+    <input type="date"  class="due" title="تاريخ الإنجاز">
+    <select class="st"><option>Not Done</option><option>Done</option></select>
+    <button type="button" class="x noprint" onclick="delAction(this)" title="حذف">×</button>`;
+  list.appendChild(row);
+  return row;
+}
+function delAction(btn){
+  const list = $('actList');
+  if(list.children.length<=1){ toast('لا يمكن حذف كل الإجراءات'); return; }
+  btn.closest('.act').remove();
+  [...list.children].forEach((r,i)=> r.querySelector('.n').textContent = (i+1)+'-');
+}
+function readActions(){
+  return [...$('actList').children].map(r=>({
+    description: r.querySelector('.ad').value.trim(),
+    responsible: r.querySelector('.rsp').value.trim(),
+    due_date   : r.querySelector('.due').value,
+    status     : r.querySelector('.st').value
+  })).filter(a=>a.description);
+}
+
+/* ------------------------------------------------------- validation */
+function validate(){
+  const errs = [];
+  const bad = (el,t)=>{ if(el) el.classList.add('bad'); errs.push(t); };
+
+  if(!radio('rtype'))  bad(qs('#paper .head'), 'حدّد نوع البلاغ: مخالفة أم حادث وشيك');
+  if(!val('reportDate')) bad($('reportDate'), 'أدخل تاريخ التقرير');
+  if(!radio('cause'))  errs.push('حدّد النوع: وضع غير آمن أم تصرف غير آمن');
+  if(!radio('risk'))   errs.push('حدّد تصنيف الخطورة');
+  if(!val('department')) bad($('department'), 'اختر الإدارة المختصة');
+  if(!val('reportedBy')) bad($('reportedBy'), 'اختر جهة الإبلاغ');
+  if(val('summary').length < 15) bad($('summary'), 'اكتب ملخصاً واضحاً للمخالفة (15 حرفاً على الأقل)');
+  if(!readActions().length) errs.push('أضف إجراءً تصحيحياً واحداً على الأقل');
+  if(!val('dueDate')) bad($('dueDate'), 'حدّد ميعاد انتهاء التنفيذ');
+  if(radio('risk')==='Very High Risk' && !val('immediateAction'))
+    bad($('immediateAction'), 'التصنيف "خطيرة جداً" يستوجب تسجيل الإجراء الفورى');
+
+  const d = val('reportDate');
+  if(d && d > iso(new Date())) bad($('reportDate'), 'تاريخ التقرير لا يمكن أن يكون في المستقبل');
+  return errs;
+}
+
+/* ------------------------------------------------------- build body */
+function payload(){
+  return {
+    source        : radio('rtype'),
+    cause         : radio('cause'),
+    department    : val('department'),
+    report_date   : val('reportDate'),
+    report_time   : val('reportTime'),
+    description   : val('summary'),
+    responsible   : val('responsible'),
+    execution_date: val('dueDate'),
+    status        : radio('status') || 'Not Done',
+    reported_by   : val('reportedBy'),
+    frequency     : val('frequency'),
+    impact_environment       : $('impEnv').checked,
+    impact_health            : $('impHealth').checked,
+    impact_personnel_safety  : $('impPers').checked,
+    impact_equipment_facility: $('impEquip').checked,
+    risk_classification: radio('risk'),
+    immediate_action   : val('immediateAction'),
+    hse_officer        : val('sigHse'),
+    dept_supervisor    : val('sigSup'),
+    hse_manager        : val('sigMgr'),
+    actions            : readActions(),
+    client_info        : (navigator.userAgent||'').slice(0,180)
+  };
+}
+
+/* ------------------------------------------------------------ submit */
+async function submitReport(){
+  if(LOCKED){ toast('هذا التقرير مُرسل بالفعل — اضغط «تقرير جديد»'); return; }
+  document.querySelectorAll('.bad').forEach(e=>e.classList.remove('bad'));
+
+  const errs = validate();
+  if(errs.length){
+    msg('err','<b>لا يمكن الإرسال — استكمل الآتي:</b><br>• ' + errs.join('<br>• '));
+    qs('.bad')?.scrollIntoView({behavior:'smooth',block:'center'});
+    return;
+  }
+  msg('');
+  $('btnSend').disabled = true; $('btnSend').textContent = 'جارٍ الإرسال…';
+
+  const body = payload();
+  /* the report is written to the dashboard bridge FIRST, so it is visible in
+     Action_plan whether or not the database answers. An edit reuses the same
+     number, so the bridge replaces the row instead of adding a second one. */
+  const editing = !!EDIT_UID;
+  let number = EDIT_UID || localNumber();
+  body.report_number = number;
+  bridgePush(body, number);
+  try{
+    const res = await send(body);
+    if(res && res.report_number && !editing){      // server owns the real number
+      bridgeRenumber(number, res.report_number);
+      number = res.report_number;
+    }
+    onSent(number, false, null, editing);
+  }catch(err){
+    queue(body, number);                           // keep it, never lose a report
+    onSent(number, true, err.message, editing);
+  }finally{
+    $('btnSend').disabled = false; $('btnSend').textContent = 'إرسال التقرير';
+  }
+}
+
+async function send(body){
+  const url = dbUrl();
+  if(!url) throw new Error('لم يتم ربط قاعدة البيانات بعد');
+  const r = await fetch(url + '/rest/v1/rpc/submit_hse_report', {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json',
+              'apikey': dbKey(),
+              'Authorization':'Bearer ' + dbKey() },
+    body: JSON.stringify({ payload: body })
+  });
+  if(!r.ok) throw new Error('الخادم رفض الطلب (' + r.status + ') ' + (await r.text()).slice(0,160));
+  return await r.json();
+}
+
+/* =====================================================================
+   THE BRIDGE — this is what makes a submitted report show up in the
+   dashboard's Action_plan. The row below is written in exactly the shape
+   the dashboard expects (same keys as AP_COLS), so the dashboard can drop
+   it straight into its register and every KPI recalculates from it.
+   ===================================================================== */
+function localNumber(){
+  const y = new Date().getFullYear();
+  const p = radio('rtype')==='Violation' ? 'VIO' : 'NM';
+  const kk = 'energya_hse_seq_' + p + '_' + y;
+  const n = (parseInt(localStorage.getItem(kk)||'0',10) || 0) + 1;
+  try{ localStorage.setItem(kk, String(n)); }catch(e){}
+  return `${p}-${y}-${String(n).padStart(4,'0')}`;
+}
+
+/** Action_plan row  (keys identical to the dashboard's AP_COLS) */
+function toActionPlanRow(body, number){
+  const acts = body.actions || [];
+  return {
+    uid             : number,
+    reportNumber    : number,
+    description     : body.description,
+    cause           : body.cause,
+    source          : body.source,               // 'Violation' | 'Near Miss'
+    department      : body.department,
+    date            : body.report_date,
+    nationality     : '',
+    correctiveAction: acts.map(a=>a.description).filter(Boolean).join('\n'),
+    responsible     : body.responsible || acts.map(a=>a.responsible).filter(Boolean).join(' / '),
+    executionDate   : body.execution_date || '',
+    status          : body.status || 'Not Done',
+    reportedBy      : body.reported_by,
+    returnDate      : '',                        // injury-only fields stay empty
+    injuredPart     : '',
+    shift           : '',
+    category        : ''
+  };
+}
+function bridgePush(body, number){
+  try{
+    const q = JSON.parse(localStorage.getItem(INBOX_KEY) || '[]');
+    const row = toActionPlanRow(body, number);
+    const i = q.findIndex(r => r.uid === row.uid);
+    if(i >= 0) q[i] = row; else q.push(row);
+    localStorage.setItem(INBOX_KEY, JSON.stringify(q));
+    /* the Action_plan row is only a summary — the full body is kept so the
+       report can be reopened later exactly as it was filled in */
+    const docs = JSON.parse(localStorage.getItem(DOCS_KEY) || '{}');
+    docs[number] = {...body, _number:number, _saved_at:Date.now()};
+    localStorage.setItem(DOCS_KEY, JSON.stringify(docs));
+    return true;
+  }catch(e){ return false; }
+}
+
+/* =====================================================================
+   SAVED REPORTS — open, edit, delete
+   ===================================================================== */
+function docsAll(){
+  try{ return JSON.parse(localStorage.getItem(DOCS_KEY) || '{}'); }catch(e){ return {}; }
+}
+function deletedUids(){
+  try{ return new Set(JSON.parse(localStorage.getItem(DEL_KEY) || '[]')); }
+  catch(e){ return new Set(); }
+}
+/** Belongs to this form? The incident form keeps its reports in the same
+    store, so the list only shows VIO / NM numbers here. */
+const MINE = n => /^(VIO|NM)-/.test(n);
+
+function myReports(){
+  const gone = deletedUids(), docs = docsAll();
+  return Object.keys(docs)
+    .filter(n => MINE(n) && !gone.has(n))
+    .map(n => docs[n])
+    .sort((a,b) => String(b.report_date||'').localeCompare(String(a.report_date||'')) ||
+                   (b._saved_at||0) - (a._saved_at||0));
+}
+function pendingSync(){
+  try{ return new Set(JSON.parse(localStorage.getItem(QUEUE_KEY)||'[]').map(x=>x.localNo)); }
+  catch(e){ return new Set(); }
+}
+function esc(s){ return String(s==null?'':s)
+  .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function openList(){
+  const rows = myReports(), q = pendingSync();
+  $('listBody').innerHTML = !rows.length
+    ? '<div class="empty">لا توجد تقارير محفوظة على هذا الجهاز بعد.</div>'
+    : `<table class="rt"><thead><tr>
+         <th>رقم التقرير</th><th>التاريخ</th><th>النوع</th><th>الإدارة</th>
+         <th>الملخص</th><th>الحالة</th><th></th></tr></thead><tbody>` +
+      rows.map(r => `<tr>
+        <td class="num">${esc(r._number)}
+            ${q.has(r._number) ? '<br><span class="pill loc">لم تُزامَن</span>'
+                               : '<br><span class="pill sync">مُزامَن</span>'}</td>
+        <td>${esc(r.report_date)}</td>
+        <td>${esc(r.source)}</td>
+        <td>${esc(r.department)}</td>
+        <td>${esc((r.description||'').slice(0,90))}${(r.description||'').length>90?'…':''}</td>
+        <td><span class="pill ${r.status==='Done'?'done':'not'}">${esc(r.status)}</span></td>
+        <td><div class="ops">
+          <button onclick="loadReport('${esc(r._number)}')">فتح / تعديل</button>
+          <button class="del" onclick="deleteReport('${esc(r._number)}')">حذف</button>
+        </div></td></tr>`).join('') + '</tbody></table>';
+  $('listMask').classList.add('on');
+  $('listWin').classList.add('on');
+}
+function closeList(){
+  $('listMask').classList.remove('on');
+  $('listWin').classList.remove('on');
+}
+
+/** Puts a saved report back on screen and switches the form into edit mode:
+    submitting again REPLACES the record instead of creating a new one. */
+function loadReport(number){
+  const b = docsAll()[number];
+  if(!b){ toast('تعذّر العثور على التقرير'); return; }
+  closeList();
+  unlock();
+  EDIT_UID = number;
+
+  const setRadio = (n,v) => { const e=document.querySelector(`input[name="${n}"][value="${CSS.escape(v||'')}"]`);
+                              if(e) e.checked = true; };
+  const set = (id,v) => { if($(id)) $(id).value = v || ''; };
+
+  setRadio('rtype', b.source); onTypeChange();
+  setRadio('cause', b.cause);
+  setRadio('risk',  b.risk_classification);
+  setRadio('status',b.status);
+  set('reportDate', b.report_date);  set('reportTime', b.report_time);
+  set('frequency',  b.frequency);    set('department', b.department);
+  set('reportedBy', b.reported_by);  set('summary',    b.description);
+  set('dueDate',    b.execution_date); set('responsible', b.responsible);
+  set('immediateAction', b.immediate_action);
+  set('sigHse', b.hse_officer);      set('sigSup', b.dept_supervisor);
+  set('sigMgr', b.hse_manager || HSE_MANAGER);
+  $('impEnv').checked   = !!b.impact_environment;
+  $('impHealth').checked= !!b.impact_health;
+  $('impPers').checked  = !!b.impact_personnel_safety;
+  $('impEquip').checked = !!b.impact_equipment_facility;
+  dueManual = true;                    // never overwrite a date already agreed
+  onRisk();
+
+  $('actList').innerHTML = '';
+  (b.actions && b.actions.length ? b.actions : [{}]).forEach(a=>{
+    const row = addAction(a.description);
+    row.querySelector('.rsp').value = a.responsible || '';
+    row.querySelector('.due').value = a.due_date    || '';
+    row.querySelector('.st').value  = a.status      || 'Not Done';
+  });
+  while($('actList').children.length < 4) addAction();
+
+  document.querySelectorAll('textarea').forEach(grow);
+  $('barNo').textContent = number;
+  $('btnSend').textContent = 'حفظ التعديلات';
+  $('editNote').style.display = '';
+  $('editNote').textContent =
+    `أنت تعدّل التقرير رقم ${number} — الحفظ يستبدل السجل الحالى ولا ينشئ تقريراً جديداً.`;
+  msg('');
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+function deleteReport(number){
+  if(!confirm(`حذف التقرير ${number} نهائياً؟\nسيُحذف أيضاً من Action_plan فى الداشبورد.`)) return;
+  try{
+    const s = deletedUids(); s.add(number);
+    localStorage.setItem(DEL_KEY, JSON.stringify([...s]));
+    const inbox = JSON.parse(localStorage.getItem(INBOX_KEY) || '[]');
+    localStorage.setItem(INBOX_KEY, JSON.stringify(inbox.filter(r=>r.uid!==number)));
+    const docs = docsAll(); delete docs[number];
+    localStorage.setItem(DOCS_KEY, JSON.stringify(docs));
+    const q = JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]');
+    localStorage.setItem(QUEUE_KEY, JSON.stringify(q.filter(x=>x.localNo!==number)));
+  }catch(e){}
+  if(EDIT_UID === number || submitted === number) newReport();
+  else { openList(); toast('تم حذف التقرير ' + number); }
+}
+
+function unlock(){
+  LOCKED = false; submitted = null;
+  $('paper').classList.remove('locked');
+  document.querySelectorAll('#paper input,#paper textarea,#paper select')
+    .forEach(e=> e.disabled = false);
+}
+
+function onSent(number, offline, why, editing){
+  LOCKED = true; submitted = number; EDIT_UID = null;
+  $('paper').classList.add('locked');
+  document.querySelectorAll('#paper input,#paper textarea,#paper select')
+    .forEach(e=>{ if(!e.closest('.act')) e.disabled = true; });
+  $('barNo').textContent = number || 'في انتظار الإرسال';
+  $('editNote').style.display = 'none';
+  $('btnSend').textContent = 'إرسال التقرير';
+  const verb = editing ? 'تم حفظ التعديلات' : 'تم إرسال التقرير بنجاح';
+  if(offline){
+    msg('warn', `<b>${verb} برقم <b>${number}</b> وظهر في Action_plan بالداشبورد.</b><br>
+      لم يصل بعد إلى قاعدة البيانات المركزية — سيُرسل تلقائياً عند توفر الاتصال.
+      يمكنك طباعته الآن.<br><span class="hint">${why||''}</span>`);
+    toast('محفوظ ومربوط بالداشبورد — بانتظار المزامنة');
+  }else{
+    msg('ok', `<b>${verb} ✔</b><br>رقم التقرير: <b>${number}</b>
+      — ظهر الآن في Action_plan بالداشبورد. يمكنك طباعته أو حفظه PDF.`);
+    toast(verb + ': ' + number, 5000);
+  }
+}
+
+/* --------------------------------------------- offline queue + retry */
+function queue(body, number){
+  const q = JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]');
+  q.push({ body, localNo: number, at: Date.now() });
+  localStorage.setItem(QUEUE_KEY, JSON.stringify(q));
+}
+function bridgeRenumber(oldNo, newNo){
+  if(!oldNo || !newNo || oldNo === newNo) return;
+  try{
+    const q = JSON.parse(localStorage.getItem(INBOX_KEY) || '[]');
+    const r = q.find(x => x.uid === oldNo);
+    if(r){ r.uid = newNo; r.reportNumber = newNo;
+           localStorage.setItem(INBOX_KEY, JSON.stringify(q)); }
+  }catch(e){}
+}
+async function flushQueue(){
+  let q = JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]');
+  if(!q.length || !navigator.onLine || !dbUrl()) return;
+  const left = [];
+  for(const item of q){
+    try{
+      const res = await send(item.body);
+      if(res && res.report_number) bridgeRenumber(item.localNo, res.report_number);
+    }catch(e){ left.push(item); }
+  }
+  localStorage.setItem(QUEUE_KEY, JSON.stringify(left));
+  const sentN = q.length - left.length;
+  if(sentN) toast(`تمت مزامنة ${sentN} تقرير مع قاعدة البيانات`, 4500);
+}
+
+/* --------------------------------------------------------- new form */
+function newReport(){
+  if(!LOCKED && !EDIT_UID && (val('summary') || readActions().length)){
+    if(!confirm('هناك بيانات لم تُرسل — هل تريد بدء تقرير جديد وفقدها؟')) return;
+  }
+  location.href = location.pathname + location.search;
+}
+
+/* ------------------------------------------------------ master data */
+async function loadMaster(){
+  const fill = (sel, arr) => {
+    const s = $(sel);
+    arr.forEach(v => { const o=document.createElement('option'); o.value=o.textContent=v; s.appendChild(o); });
+  };
+  let dep = FALLBACK.department, rep = FALLBACK.reported_by;
+  try{
+    if(dbUrl()){
+      const r = await fetch(dbUrl() +
+        '/rest/v1/hse_master?select=category,value&active=eq.true&order=display_order',
+        { headers:{ apikey:dbKey(), Authorization:'Bearer '+dbKey() }});
+      if(r.ok){
+        const rows = await r.json();
+        const d = rows.filter(x=>x.category==='department').map(x=>x.value);
+        const p = rows.filter(x=>x.category==='reported_by').map(x=>x.value);
+        if(d.length) dep = d;
+        if(p.length) rep = p;
+      }
+    }
+  }catch(e){ /* offline -> fallback lists */ }
+  fill('department', dep);
+  fill('reportedBy', rep);
+  fill('sigHse', HSE_TEAM);          // officer signature = pick a name
+  const dl = $('respList');
+  RESP_SUGGEST.forEach(v=>{ const o=document.createElement('option'); o.value=v; dl.appendChild(o); });
+}
+
+/* ------------------------------------------------------------- init */
+(function init(){
+  // ?type=violation  /  ?type=nearmiss  -> lock the report type
+  const t = (new URLSearchParams(location.search).get('type')||'').toLowerCase();
+  if(t==='violation' || t==='nearmiss' || t==='near-miss'){
+    const v = t==='violation' ? 'Violation' : 'Near Miss';
+    const el = document.querySelector(`input[name=rtype][value="${v}"]`);
+    if(el){ el.checked = true;
+      document.querySelectorAll('input[name=rtype]').forEach(r=>{ if(r!==el) r.disabled = true; });
+      onTypeChange();
+    }
+  }
+  $('reportDate').value = iso(new Date());
+  $('sigMgr').value = HSE_MANAGER;           // مدير إدارة السلامة — تلقائى
+  for(let i=0;i<4;i++) addAction();          // paper form shows 4 lines
+  loadMaster();
+  flushQueue();
+  window.addEventListener('online', flushQueue);
+  document.querySelectorAll('textarea').forEach(grow);
+  window.addEventListener('beforeprint', fitOnePage);
+  window.addEventListener('afterprint',  unfit);
+})();
+
+/* =====================================================================
+   ONE PAGE, ALWAYS.
+   The layout is designed to fit A4 with room to spare, but a long summary
+   or ten corrective actions would still spill. Rather than let the sheet
+   break in half, it is scaled down just enough to land on a single page —
+   the same thing "Fit to one page" does in Excel.
+   ===================================================================== */
+const PX_PER_MM = 96 / 25.4;
+/* the locked sheet height — content taller than this is scaled down to it */
+const SHEET_H   = 262 * PX_PER_MM;
+
+/** Empty date / time boxes print their "dd/mm/yyyy" hint — blank them out. */
+function markBlankDates(){
+  document.querySelectorAll('input[type=date],input[type=time]')
+    .forEach(e => e.classList.toggle('blank', !e.value));
+}
+
+function fitOnePage(){
+  const p  = $('paper'), css = $('printCSS');
+  p.style.zoom = '';
+  markBlankDates();
+  document.querySelectorAll('textarea').forEach(grow);   // expand to the real text
+
+  css.media = 'all';                 // ---- the screen now IS the printed page
+  document.body.offsetHeight;        // force a synchronous re-layout
+  const h = p.getBoundingClientRect().height;
+  css.media = 'print';               // ---- back to normal
+
+  /* 1% of slack absorbs sub-pixel rounding */
+  if(h > SHEET_H) p.style.zoom = Math.max(0.45, (SHEET_H / h) * 0.99).toFixed(4);
+}
+function unfit(){ $('paper').style.zoom = ''; }
+</script>
+</body>
+</html>
