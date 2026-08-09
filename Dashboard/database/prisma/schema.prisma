@@ -1,0 +1,651 @@
+// ============================================================================
+// Energya HSE — Prisma Schema
+// Source of truth: Phase1_File_Analysis_Report.md
+// Locked decisions (2026-07-28):
+//   - Source enum stores "Near Miss" WITH a space (legacy data / chart parity)
+//   - injury_severity_computed uses dashboard thresholds (4-15 / 16-45 / 46+)
+//     kept separate from incident_category (the form's own checkbox wording)
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------------------------------------------
+// ENUMS
+// ----------------------------------------------------------------------------
+
+enum ReportSource {
+  Injury
+  Near_Miss @map("Near Miss") // DB enum label is literally "Near Miss" (with space) — Phase 1 decision, matches legacy Action_plan data & all 27 dashboard charts
+  Violation
+}
+
+enum ReportType {
+  Incident
+  NearMiss
+  Violation
+}
+
+enum CompanyType {
+  Energya
+  Agwaa
+  External_Contractor
+  Visitor
+}
+
+enum IncidentCategory {
+  First_Aid_Case
+  Minor_Injury
+  Moderate_Injury
+  Major_Injury
+  Health_Condition
+  Fatality_Incident
+}
+
+enum DamageCategory {
+  Fire
+  Machines_Equipment
+  Floors_Doors_Stairs_Structures
+  Electrical_Panel
+  Other
+}
+
+enum InjurySeverityComputed {
+  FAC // 0-3 days
+  Minor // 4-15 days
+  Moderate // 16-45 days
+  Major // >=46 days
+  Fatality
+}
+
+enum Shift {
+  Day
+  Night
+}
+
+enum RiskClassification {
+  Very_High_Risk
+  High_Risk
+  Moderate_Risk
+  Low_Risk
+}
+
+enum ActionStatusPrint {
+  Not_Done
+  Done
+}
+
+enum ActionStatusFull {
+  Draft
+  Submitted
+  Under_Review
+  Action_Assigned
+  Action_in_Progress
+  Pending_Verification
+  Done
+  Closed
+  Reopened
+  Cancelled
+}
+
+enum IncidentWorkflowStatus {
+  Draft
+  Submitted
+  Under_Review
+  Returned_for_Correction
+  Analysis_in_Progress
+  Pending_HSE_Manager_Approval
+  Approved
+  Corrective_Actions_in_Progress
+  Pending_Verification
+  Closed
+  Reopened
+  Cancelled
+}
+
+enum VnmWorkflowStatus {
+  Draft
+  Submitted
+  Immediate_Action_Required
+  Under_Review
+  Action_Assigned
+  Action_in_Progress
+  Pending_Verification
+  Done
+  Closed
+  Reopened
+  Cancelled
+}
+
+enum ApprovalDecision {
+  Approved
+  Rejected
+  Returned
+}
+
+// ----------------------------------------------------------------------------
+// IDENTITY / ACCESS
+// ----------------------------------------------------------------------------
+
+model Role {
+  id          Int      @id @default(autoincrement())
+  roleName    String   @unique @map("role_name")
+  // HSE Reporter | HSE Officer | HSE Supervisor | Department Supervisor
+  // HSE Manager | System Administrator
+  permissions Json     @default("{}")
+  users       User[]
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("roles")
+}
+
+model User {
+  id               Int       @id @default(autoincrement())
+  fullName         String    @map("full_name")
+  employeeNumber   String?   @unique @map("employee_number")
+  email            String    @unique
+  authProvider     String    @default("credentials") @map("auth_provider")
+  passwordHash     String?   @map("password_hash")
+  roleId           Int       @map("role_id")
+  role             Role      @relation(fields: [roleId], references: [id])
+  departmentId     Int?      @map("department_id")
+  department       Department? @relation(fields: [departmentId], references: [id])
+  assignedLocations Location[] @relation("UserLocations")
+  active           Boolean   @default(true)
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  reportsCreated   Report[]  @relation("ReportsCreatedBy")
+  reportsUpdated   Report[]  @relation("ReportsUpdatedBy")
+  reportsReportedBy Report[] @relation("ReportsReportedBy")
+  correctiveActionsResponsible CorrectiveAction[] @relation("ActionResponsible")
+  correctiveActionsVerified    CorrectiveAction[] @relation("ActionVerifiedBy")
+  approvals        Approval[]
+  auditLogs        AuditLog[]
+  notifications    Notification[]
+  analysesAsAnalyst IncidentAnalysis[] @relation("Analyst")
+  analysesAsHseManager IncidentAnalysis[] @relation("HseManagerApprover")
+  workforceParamsUpdated WorkforceParameter[] @relation("WorkforceParamUpdatedBy")
+
+  @@map("users")
+}
+
+model Department {
+  id                Int       @id @default(autoincrement())
+  departmentCode    String    @unique @map("department_code")
+  departmentNameEn  String    @map("department_name_en")
+  departmentNameAr  String?   @map("department_name_ar")
+  legacyValue       String?   @map("legacy_value") // preserves original spelling e.g. "Maintinance"
+  active            Boolean   @default(true)
+  users             User[]
+  locations         Location[]
+  reports           Report[]
+  correctiveActions CorrectiveAction[] @relation("ActionDepartment")
+
+  @@map("departments")
+}
+
+model Location {
+  id               Int       @id @default(autoincrement())
+  locationNameEn   String    @map("location_name_en")
+  locationNameAr   String?   @map("location_name_ar")
+  departmentId     Int?      @map("department_id")
+  department       Department? @relation(fields: [departmentId], references: [id])
+  active           Boolean   @default(true)
+  users            User[]    @relation("UserLocations")
+  reports          Report[]
+
+  @@map("locations")
+}
+
+model Person {
+  id             Int       @id @default(autoincrement())
+  employeeNumber String?   @map("employee_number")
+  fullName       String    @map("full_name")
+  nationality    String?   // NULL for non-applicable rows (do not store "$$$$$$$" placeholder)
+  companyType    CompanyType @map("company_type")
+  companyName    String?   @map("company_name")
+  hiringDate     DateTime? @map("hiring_date")
+  jobTitle       String?   @map("job_title")
+  incidentReports IncidentReport[]
+
+  @@map("persons")
+}
+
+// ----------------------------------------------------------------------------
+// CORE REPORT + SUBTYPES
+// ----------------------------------------------------------------------------
+
+model Report {
+  id             Int          @id @default(autoincrement())
+  reportNumber   String       @unique @map("report_number") // INC-2026-0001 / NM-2026-0001 / VIO-2026-0001
+  source         ReportSource
+  reportType     ReportType   @map("report_type")
+  reportDate     DateTime     @map("report_date")
+  reportTime     DateTime?    @map("report_time")
+  departmentId   Int?         @map("department_id")
+  department     Department?  @relation(fields: [departmentId], references: [id])
+  locationId     Int?         @map("location_id")
+  location       Location?    @relation(fields: [locationId], references: [id])
+  reportedById   Int?         @map("reported_by_id")
+  reportedBy     User?        @relation("ReportsReportedBy", fields: [reportedById], references: [id])
+  description    String       @db.Text
+  workflowStatus String       @map("workflow_status") // stores IncidentWorkflowStatus or VnmWorkflowStatus value as string
+  cancelledReason String?     @map("cancelled_reason")
+
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  createdById    Int?         @map("created_by_id")
+  createdBy      User?        @relation("ReportsCreatedBy", fields: [createdById], references: [id])
+  updatedById    Int?         @map("updated_by_id")
+  updatedBy      User?        @relation("ReportsUpdatedBy", fields: [updatedById], references: [id])
+  deletedAt      DateTime?    @map("deleted_at") // soft delete only; never hard-delete a report
+
+  incidentReport         IncidentReport?
+  violationNearMiss      ViolationNearMissReport?
+  correctiveActions      CorrectiveAction[]
+  witnesses              Witness[]
+  attachments            Attachment[]
+  approvals              Approval[]
+  auditLogs              AuditLog[]
+  notifications          Notification[]
+
+  // legacy compatibility — preserves original Action_plan row number on import
+  legacyActionPlanNo Int? @map("legacy_action_plan_no")
+
+  @@index([source, reportDate])
+  @@index([departmentId])
+  @@map("reports")
+}
+
+model IncidentReport {
+  reportId                  Int       @id @map("report_id")
+  report                    Report    @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  injuredPersonId            Int?      @map("injured_person_id")
+  injuredPerson               Person?   @relation(fields: [injuredPersonId], references: [id])
+
+  incidentCategory           IncidentCategory? @map("incident_category") // checkbox on form (First Aid/Minor/.../Fatality)
+  damageCategory              DamageCategory?   @map("damage_category")
+  injuryNumber                 String?   @map("injury_number") // legacy free-text "Injury No (___)"
+  damageNumber                 String?   @map("damage_number")
+
+  hiringDate                  DateTime? @map("hiring_date")
+  returnToWorkDate             DateTime? @map("return_to_work_date")
+
+  injuredBodyPartDetailId      Int?      @map("injured_body_part_detail_id")
+  injuredBodyPartDetail        MasterData? @relation("BodyPartDetail", fields: [injuredBodyPartDetailId], references: [id])
+  injuredBodyPartDashboardId   Int?      @map("injured_body_part_dashboard_id")
+  injuredBodyPartDashboard     MasterData? @relation("BodyPartDashboard", fields: [injuredBodyPartDashboardId], references: [id])
+
+  shift                       Shift?
+  injuryCategory                String?   @map("injury_category") // Cut/Contusion/Broken bones/Burn/... free text-derived MasterData code
+  attachmentAvailable          Boolean   @default(false) @map("attachment_available")
+  fatality                    Boolean   @default(false)
+
+  // ----- server-computed, never user-entered (admin override requires elevated permission) -----
+  fac                          Boolean   @default(false) @map("fac")
+  lti                          Boolean   @default(false) @map("lti")
+  totalLostWorkdays            Int       @default(0) @map("total_lost_workdays")
+  injurySeverityComputed       InjurySeverityComputed? @map("injury_severity_computed")
+  manualOverride                Boolean   @default(false) @map("manual_override")
+  manualOverrideReason          String?   @map("manual_override_reason")
+
+  witnessesConfirmed            Boolean   @default(false) @map("witnesses_confirmed")
+
+  analysis                     IncidentAnalysis?
+  lostWorkdayAllocations        LostWorkdayAllocation[]
+
+  @@map("incident_reports")
+}
+
+model IncidentAnalysis {
+  reportId            Int       @id @map("report_id")
+  incidentReport       IncidentReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  incidentLocationId    Int?      @map("incident_location_id")
+  incidentLocation      MasterData? @relation("IncidentLocation", fields: [incidentLocationId], references: [id])
+  incidentCauseId        Int?      @map("incident_cause_id")
+  incidentCause          MasterData? @relation("IncidentCause", fields: [incidentCauseId], references: [id])
+  unsafeActId             Int?      @map("unsafe_act_id")
+  unsafeAct               MasterData? @relation("UnsafeAct", fields: [unsafeActId], references: [id])
+  unsafeConditionId       Int?      @map("unsafe_condition_id")
+  unsafeCondition         MasterData? @relation("UnsafeCondition", fields: [unsafeConditionId], references: [id])
+
+  directCauses           String?   @db.Text @map("direct_causes")
+  indirectCauses          String?   @db.Text @map("indirect_causes")
+  rootCauses               String?   @db.Text @map("root_causes")
+  recommendations          String?   @db.Text
+
+  analystId                Int?      @map("analyst_id")
+  analyst                  User?     @relation("Analyst", fields: [analystId], references: [id])
+  analysisDate              DateTime? @map("analysis_date")
+  reviewStatus               String?   @map("review_status")
+  hseManagerId               Int?      @map("hse_manager_id")
+  hseManager                 User?     @relation("HseManagerApprover", fields: [hseManagerId], references: [id])
+  hseManagerApproval          Boolean   @default(false) @map("hse_manager_approval")
+  hseManagerApprovalDate      DateTime? @map("hse_manager_approval_date")
+
+  @@map("incident_analysis")
+}
+
+model ViolationNearMissReport {
+  reportId                Int       @id @map("report_id")
+  report                  Report    @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  unsafeAction             Boolean   @default(false) @map("unsafe_action")
+  unsafeCondition          Boolean   @default(false) @map("unsafe_condition")
+
+  frequencyId               Int?      @map("frequency_id")
+  frequency                 MasterData? @relation(fields: [frequencyId], references: [id])
+  frequencyCount             Int?      @map("frequency_count")
+
+  impactEnvironment          Boolean   @default(false) @map("impact_environment")
+  impactHealth                Boolean   @default(false) @map("impact_health")
+  impactPersonnelSafety       Boolean   @default(false) @map("impact_personnel_safety")
+  impactEquipmentFacility     Boolean   @default(false) @map("impact_equipment_facility")
+
+  riskClassification          RiskClassification @map("risk_classification")
+  immediateActionRequired     Boolean   @default(false) @map("immediate_action_required")
+  immediateActionTaken        String?   @db.Text @map("immediate_action_taken")
+
+  dueDate                    DateTime? @map("due_date")
+  dueDateOverrideReason        String?   @map("due_date_override_reason")
+
+  hseOfficerSignature          String?   @map("hse_officer_signature")
+  departmentSupervisorSignature String?  @map("department_supervisor_signature")
+  verificationSignature         String?  @map("verification_signature")
+
+  printActionStatus            ActionStatusPrint @default(Not_Done) @map("print_action_status")
+
+  @@map("violation_near_miss_reports")
+}
+
+// ----------------------------------------------------------------------------
+// CORRECTIVE ACTIONS / SUPPORTING ENTITIES
+// ----------------------------------------------------------------------------
+
+model CorrectiveAction {
+  id                    Int       @id @default(autoincrement())
+  reportId               Int       @map("report_id")
+  report                 Report    @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  actionNumber            Int       @map("action_number") // 1..n; first 4 render on the print template
+
+  actionDescription       String    @db.Text @map("action_description")
+  responsibleUserId        Int?      @map("responsible_user_id")
+  responsibleUser          User?     @relation("ActionResponsible", fields: [responsibleUserId], references: [id])
+  responsibleDepartmentId   Int?      @map("responsible_department_id")
+  responsibleDepartment     Department? @relation("ActionDepartment", fields: [responsibleDepartmentId], references: [id])
+
+  targetDate               DateTime? @map("target_date")
+  completionDate            DateTime? @map("completion_date")
+  actionStatus              ActionStatusFull @default(Draft) @map("action_status")
+
+  evidence                  String?   @map("evidence") // storage key/path
+  verificationNotes          String?   @db.Text @map("verification_notes")
+  verifiedById                Int?      @map("verified_by_id")
+  verifiedBy                  User?     @relation("ActionVerifiedBy", fields: [verifiedById], references: [id])
+  verifiedAt                  DateTime? @map("verified_at")
+
+  createdAt                  DateTime  @default(now()) @map("created_at")
+  updatedAt                  DateTime  @updatedAt @map("updated_at")
+
+  @@unique([reportId, actionNumber])
+  @@map("corrective_actions")
+}
+
+model Witness {
+  id                    Int       @id @default(autoincrement())
+  reportId               Int       @map("report_id")
+  report                 Report    @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  witnessName             String    @map("witness_name")
+  witnessEmployeeNumber   String?   @map("witness_employee_number")
+  confirmation             Boolean   @default(false)
+  signature                 String?
+  createdAt                DateTime  @default(now()) @map("created_at")
+
+  @@map("witnesses")
+}
+
+model Attachment {
+  id                   Int       @id @default(autoincrement())
+  reportId              Int?      @map("report_id")
+  report                 Report?   @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  correctiveActionId      Int?      @map("corrective_action_id")
+
+  fileName                String    @map("file_name")
+  fileType                 String    @map("file_type")
+  filePath                  String    @map("file_path")
+  uploadedById               Int?      @map("uploaded_by_id")
+  uploadedAt                 DateTime  @default(now()) @map("uploaded_at")
+
+  @@map("attachments")
+}
+
+// month-by-month lost-workday distribution — NOT capped at 4 months (removes the
+// Excel LWDs/LWDs1/LWDs2/LWDs3 4-column limitation per project brief)
+model LostWorkdayAllocation {
+  id                   Int       @id @default(autoincrement())
+  incidentReportId       Int       @map("incident_report_id")
+  incidentReport          IncidentReport @relation(fields: [incidentReportId], references: [id], onDelete: Cascade)
+  year                     Int
+  month                     Int       // 1-12
+  lostWorkdays               Int       @map("lost_workdays")
+
+  @@unique([incidentReportId, year, month])
+  @@index([year, month])
+  @@map("lost_workday_allocations")
+}
+
+model Approval {
+  id            Int       @id @default(autoincrement())
+  reportId       Int       @map("report_id")
+  report         Report    @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  approvalType    String    @map("approval_type")
+  approverId       Int       @map("approver_id")
+  approver         User      @relation(fields: [approverId], references: [id])
+  decision          ApprovalDecision
+  comments           String?   @db.Text
+  approvalDate        DateTime  @default(now()) @map("approval_date")
+
+  @@map("approvals")
+}
+
+model AuditLog {
+  id           Int       @id @default(autoincrement())
+  userId        Int?      @map("user_id")
+  user          User?     @relation(fields: [userId], references: [id])
+  reportId       Int?      @map("report_id")
+  report         Report?   @relation(fields: [reportId], references: [id])
+  action          String    // created | updated | classification_changed | closed | reopened | printed | exported_pdf | ...
+  fieldName        String?   @map("field_name")
+  oldValue          String?   @db.Text @map("old_value")
+  newValue          String?   @db.Text @map("new_value")
+  actionDate         DateTime  @default(now()) @map("action_date")
+  ipAddress          String?   @map("ip_address")
+
+  @@index([reportId])
+  @@index([actionDate])
+  @@map("audit_logs")
+}
+
+model Notification {
+  id           Int       @id @default(autoincrement())
+  userId        Int       @map("user_id")
+  user          User      @relation(fields: [userId], references: [id])
+  reportId       Int?      @map("report_id")
+  report         Report?   @relation(fields: [reportId], references: [id])
+  type            String    // report_created | submitted | returned | approved | action_assigned | due_soon | overdue | done | verification_requested | closed | reopened
+  message          String    @db.Text
+  read              Boolean   @default(false)
+  createdAt          DateTime  @default(now()) @map("created_at")
+
+  @@map("notifications")
+}
+
+// ----------------------------------------------------------------------------
+// MASTER DATA (admin-managed reference lists)
+// ----------------------------------------------------------------------------
+
+model MasterData {
+  id                Int      @id @default(autoincrement())
+  category           String   // location | incident_cause | body_part_detail | body_part_dashboard | unsafe_act |
+                              // unsafe_condition | frequency | injury_category | nationality | shift | status
+  code                String
+  valueEn              String   @map("value_en")
+  valueAr               String?  @map("value_ar")
+  dashboardMapping       String?  @map("dashboard_mapping") // e.g. "Right Arm" -> dashboard bucket "Arm"
+  legacyValue             String?  @map("legacy_value") // original spelling from imported Excel data
+  active                  Boolean  @default(true)
+  displayOrder             Int      @default(0) @map("display_order")
+
+  bodyPartDetailOf          IncidentReport[] @relation("BodyPartDetail")
+  bodyPartDashboardOf        IncidentReport[] @relation("BodyPartDashboard")
+  incidentLocationOf          IncidentAnalysis[] @relation("IncidentLocation")
+  incidentCauseOf              IncidentAnalysis[] @relation("IncidentCause")
+  unsafeActOf                   IncidentAnalysis[] @relation("UnsafeAct")
+  unsafeConditionOf              IncidentAnalysis[] @relation("UnsafeCondition")
+  frequencyOf                     ViolationNearMissReport[]
+
+  @@unique([category, code])
+  @@map("master_data")
+}
+
+// ----------------------------------------------------------------------------
+// DASHBOARD SUPPORTING TABLES (de-hardcode the Excel constants)
+// ----------------------------------------------------------------------------
+
+// Replaces the workbook's flat "3200 workers / 8 shift hours" constants
+// (KPIs calculator!H21 / N21, Monthly report!F3 / J3) with an editable,
+// per-month value. working_days_override lets an admin correct the
+// calendar-day default (weekends/holidays) if needed later.
+model WorkforceParameter {
+  id                   Int      @id @default(autoincrement())
+  year                  Int
+  month                  Int      // 1-12
+
+  // Fully editable per month by System Administrator / HSE Manager.
+  // Replaces the workbook's hardcoded 3200 (KPIs calculator!H21, Monthly report!F3).
+  noOfWorkers             Int      @map("no_of_workers")
+
+  // Editable per month. Replaces hardcoded 8 (KPIs calculator!N21, Monthly report!J3).
+  shiftHours               Decimal  @map("shift_hours") @db.Decimal(4, 2)
+
+  // NULL = use calendar-day count (legacy Excel behaviour).
+  // Set a value to exclude weekends/holidays from Total Working Hours.
+  workingDaysOverride       Int?     @map("working_days_override")
+
+  // change tracking — any edit here shifts ASR/AFR for that month, so it is auditable
+  updatedById                Int?     @map("updated_by_id")
+  updatedBy                  User?    @relation("WorkforceParamUpdatedBy", fields: [updatedById], references: [id])
+  changeReason                String?  @map("change_reason")
+  createdAt                    DateTime @default(now()) @map("created_at")
+  updatedAt                    DateTime @updatedAt @map("updated_at")
+
+  @@unique([year, month])
+  @@map("workforce_parameters")
+}
+
+// Global fallback values. Any month with no WorkforceParameter row resolves
+// to these, so a new month/year never breaks the KPI calculation and never
+// needs a re-seed. Editable by System Administrator.
+// Seeded: default_no_of_workers = 3200, default_shift_hours = 8.
+model SystemSetting {
+  id            Int      @id @default(autoincrement())
+  key            String   @unique // default_no_of_workers | default_shift_hours | ...
+  value           String
+  description      String?
+  updatedById       Int?     @map("updated_by_id")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  @@map("system_settings")
+}
+
+model EnvironmentalRefrigerant {
+  id       Int      @id @default(autoincrement())
+  year      Int
+  month      Int
+  r11         Decimal  @default(0) @db.Decimal(10, 3)
+  r22         Decimal  @default(0) @db.Decimal(10, 3)
+  r32         Decimal  @default(0) @db.Decimal(10, 3)
+  r134        Decimal  @default(0) @db.Decimal(10, 3)
+  r410        Decimal  @default(0) @db.Decimal(10, 3)
+
+  @@unique([year, month])
+  @@map("environmental_refrigerants")
+}
+
+// Admin-managed, versioned CO2 conversion coefficients
+// (source values confirmed in Environmental Data sheet: R11x4.66, R22x1.76x10%,
+//  R32x0.677, R134x1.3x10%, R410x1.924x10%)
+model EnvironmentalCoefficient {
+  id                Int       @id @default(autoincrement())
+  gas                String    // R11 | R22 | R32 | R134 | R410 | Diesel | Electricity
+  coefficientValue    Decimal   @map("coefficient_value") @db.Decimal(10, 5)
+  effectiveDate         DateTime  @map("effective_date")
+  changedById            Int?      @map("changed_by_id")
+  createdAt              DateTime  @default(now()) @map("created_at")
+
+  @@map("environmental_coefficients")
+}
+
+model EnvironmentalConsumption {
+  id                  Int      @id @default(autoincrement())
+  year                 Int
+  month                 Int
+  lpgCylinderKg           Decimal  @default(0) @map("lpg_cylinder_kg") @db.Decimal(10, 2)
+  co2CylinderKg            Decimal  @default(0) @map("co2_cylinder_kg") @db.Decimal(10, 2)
+  co2TankKg                 Decimal  @default(0) @map("co2_tank_kg") @db.Decimal(10, 2)
+
+  @@unique([year, month])
+  @@map("environmental_consumption")
+}
+
+model EnvironmentalCo2 {
+  id                    Int      @id @default(autoincrement())
+  year                   Int
+  month                   Int
+  dieselLiters              Decimal  @default(0) @map("diesel_liters") @db.Decimal(10, 2)
+  electricityKwh              Decimal  @default(0) @map("electricity_kwh") @db.Decimal(12, 2)
+  monthlyProductionTon           Decimal  @default(0) @map("monthly_production_ton") @db.Decimal(10, 2)
+
+  @@unique([year, month])
+  @@map("environmental_co2")
+}
+
+model MonthlyReportConclusion {
+  id            Int       @id @default(autoincrement())
+  year           Int
+  period          String    // e.g. "Jun", "Q2", "H1", "YTD"
+  version          Int       @default(1)
+  text              String    @db.Text
+  createdById        Int?      @map("created_by_id")
+  approvedById        Int?      @map("approved_by_id")
+  approvedAt           DateTime? @map("approved_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
+
+  @@unique([year, period, version])
+  @@map("monthly_report_conclusions")
+}
+
+model PictureForImprovement {
+  id                  Int       @id @default(autoincrement())
+  title                String
+  description            String?   @db.Text
+  departmentId             Int?      @map("department_id")
+  beforeImagePath           String?   @map("before_image_path")
+  afterImagePath             String?   @map("after_image_path")
+  pictureDate                 DateTime? @map("picture_date")
+  improvementStatus            String?   @map("improvement_status")
+  responsiblePerson             String?   @map("responsible_person")
+  closureDate                    DateTime? @map("closure_date")
+  createdAt                       DateTime  @default(now()) @map("created_at")
+
+  @@map("pictures_for_improvement")
+}

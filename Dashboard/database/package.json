@@ -1,0 +1,23 @@
+{
+  "name": "energya-hse-database",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Database layer (Prisma schema, seed, compatibility view) for the Energya HSE Incident, Near Miss, Violation & Interactive Dashboard System.",
+  "scripts": {
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev --name init",
+    "prisma:seed": "prisma db seed",
+    "prisma:validate": "prisma validate"
+  },
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.18.0"
+  },
+  "devDependencies": {
+    "prisma": "^5.18.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.4"
+  }
+}
